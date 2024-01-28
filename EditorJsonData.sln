@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EditorJsonData", "EditorJsonData\EditorJsonData.csproj", "{DB93BA51-342E-4944-BF28-DF8594773EBC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DB93BA51-342E-4944-BF28-DF8594773EBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DB93BA51-342E-4944-BF28-DF8594773EBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DB93BA51-342E-4944-BF28-DF8594773EBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DB93BA51-342E-4944-BF28-DF8594773EBC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
