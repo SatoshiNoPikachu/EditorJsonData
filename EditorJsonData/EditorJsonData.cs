@@ -589,8 +589,9 @@ public class EditorJsonData
     /// <param name="base_name">顶层类型名称</param>
     private void CreateBaseJson(Type type, string base_name)
     {
-        if (type.IsArray) type = type.GetElementType();
-        if (type is null) return;
+        // if (type.IsArray) type = type.GetElementType();
+        // if (type is null) return;
+        type = ResolveType(type);
 
         if (type.IsEnum) return;
         if (type.IsPrimitive || type == typeof(string)) return;
@@ -615,13 +616,24 @@ public class EditorJsonData
     {
         var data = new JsonData();
 
+        bool is_create;
+        if (_types[type] == base_name)
+        {
+            // is_create = type.IsSubclassOf(typeof(UniqueIDScriptable)) || type.IsSubclassOf(typeof(ScriptableObject)) &&
+            //     type.Module != typeof(CardData).Module;
+            is_create = type.IsSubclassOf(typeof(ScriptableObject));
+        }
+        else
+        {
+            is_create = !type.IsSubclassOf(typeof(UniqueIDScriptable));
+        }
+
         var no_field = true;
+        var is_script = type.IsSubclassOf(typeof(ScriptableObject)) && !type.IsSubclassOf(typeof(UniqueIDScriptable));
         foreach (var field in GetSerializedFields(type))
         {
             no_field = false;
-            if (type.IsSubclassOf(typeof(UniqueIDScriptable)) || type.IsSubclassOf(typeof(ScriptableObject)) &&
-                type.Module != typeof(CardData).Module)
-                CreateBaseJson(field.FieldType, base_name);
+            if (is_create) CreateBaseJson(field.FieldType, is_script ? "FromScriptableObject" : base_name);
             data[field.Name] = FieldToJsonData(field, base_name);
         }
 
