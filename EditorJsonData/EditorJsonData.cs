@@ -23,34 +23,35 @@ public class EditorJsonData
         var data = new EditorJsonData(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
         var cards = new Dictionary<string, List<object>>
         {
-            [CardTypes.Base.ToString()] = new(),
-            [CardTypes.Blueprint.ToString()] = new(),
-            [CardTypes.Hand.ToString()] = new(),
-            [CardTypes.Environment.ToString()] = new(),
-            [CardTypes.Event.ToString()] = new(),
-            [CardTypes.Explorable.ToString()] = new(),
-            [CardTypes.Item.ToString()] = new(),
-            [CardTypes.Liquid.ToString()] = new(),
-            [CardTypes.Location.ToString()] = new(),
-            [CardTypes.Weather.ToString()] = new(),
-            [CardTypes.EnvDamage.ToString()] = new(),
-            [CardTypes.EnvImprovement.ToString()] = new(),
+            [CardTypes.Base.ToString()] = [],
+            [CardTypes.Blueprint.ToString()] = [],
+            [CardTypes.Hand.ToString()] = [],
+            [CardTypes.Environment.ToString()] = [],
+            [CardTypes.Event.ToString()] = [],
+            [CardTypes.Explorable.ToString()] = [],
+            [CardTypes.Item.ToString()] = [],
+            [CardTypes.Liquid.ToString()] = [],
+            [CardTypes.Location.ToString()] = [],
+            [CardTypes.Weather.ToString()] = [],
+            [CardTypes.EnvDamage.ToString()] = [],
+            [CardTypes.EnvImprovement.ToString()] = [],
         };
         foreach (var card in GameLoad.Instance.DataBase.AllData.OfType<CardData>())
         {
             cards[card.CardType.ToString()].Add(card);
         }
 
-        foreach (var type in typeof(CardData).Module.GetTypes())
+        foreach (var type in typeof(CardData).Assembly.GetTypes())
         {
             if (!type.IsSubclassOf(typeof(ScriptableObject))) continue;
             if (type == typeof(ScriptableObject) || type == typeof(UniqueIDScriptable)) continue;
-            data.AddType(type, true);
+            data.AddType(type, true, false);
             if (type == typeof(CardData)) continue;
             data.SetObj(type, Resources.FindObjectsOfTypeAll(type).Cast<object>().ToList());
         }
 
         data.AddType<Sprite>();
+
         data.SetObj<Sprite>(Resources.FindObjectsOfTypeAll<Sprite>().Cast<object>().ToList());
 
         data.AddType<AudioClip>();
@@ -70,6 +71,11 @@ public class EditorJsonData
     /// 类型对象字典
     /// </summary>
     private readonly Dictionary<Type, Dictionary<string, List<object>>> _objs = new();
+
+    /// <summary>
+    /// 程序集白名单
+    /// </summary>
+    private readonly List<Assembly> _assemblyWhiteList = [];
 
     /// <summary>
     /// 输出路径
@@ -96,10 +102,11 @@ public class EditorJsonData
     /// 添加类型
     /// </summary>
     /// <param name="type"></param>
-    /// <param name="isAutoAddField"></param>
-    public void AddType(Type type, bool isAutoAddField)
+    /// <param name="isAutoAddField">是否自动添加字段类型</param>
+    /// <param name="isCheckWhiteList">自动添加字段时是否检查白名单</param>
+    public void AddType(Type type, bool isAutoAddField, bool isCheckWhiteList = true)
     {
-        AddType(type, "", isAutoAddField);
+        AddType(type, "", isAutoAddField, isCheckWhiteList);
     }
 
     /// <summary>
@@ -108,16 +115,28 @@ public class EditorJsonData
     /// <param name="type">类型</param>
     /// <param name="name">别名</param>
     /// <param name="isAutoAddField">是否自动添加字段类型</param>
-    public void AddType(Type type, string name = "", bool isAutoAddField = false)
+    /// <param name="isCheckWhiteList">自动添加字段时是否检查白名单</param>
+    public void AddType(Type type, string name = "", bool isAutoAddField = false, bool isCheckWhiteList = true)
     {
         if (name == "") name = type.Name;
         _types[type] = _prefix + name;
+
+        if (type.IsSubclassOf(typeof(UniqueIDScriptable)) && type.Assembly != typeof(CardData).Assembly)
+        {
+            var uidObj = (UniqueIDScriptable)ScriptableObject.CreateInstance(type);
+            uidObj.name = "BaseTemplate";
+            uidObj.UniqueID = "";
+            SetObj(type, [uidObj]);
+        }
+
         if (!isAutoAddField) return;
 
         foreach (var t in GetSerializedFields(type).Select(field => ResolveType(field.FieldType))
                      .Where(t => !_types.ContainsKey(t)))
         {
-            AddType(t, "", true);
+            if (isCheckWhiteList && type.Assembly != t.Assembly && !_assemblyWhiteList.Contains(t.Assembly)) continue;
+
+            AddType(t, "", true, isCheckWhiteList);
         }
     }
 
@@ -125,10 +144,11 @@ public class EditorJsonData
     /// 添加类型
     /// </summary>
     /// <param name="isAutoAddField">是否自动添加字段类型</param>
+    /// <param name="isCheckWhiteList">自动添加字段时是否检查白名单</param>
     /// <typeparam name="T">类型</typeparam>
-    public void AddType<T>(bool isAutoAddField)
+    public void AddType<T>(bool isAutoAddField, bool isCheckWhiteList = true)
     {
-        AddType(typeof(T), "", isAutoAddField);
+        AddType(typeof(T), "", isAutoAddField, isCheckWhiteList);
     }
 
     /// <summary>
@@ -136,10 +156,11 @@ public class EditorJsonData
     /// </summary>
     /// <param name="name">别名</param>
     /// <param name="isAutoAddField">是否自动添加字段类型</param>
+    /// <param name="isCheckWhiteList">自动添加字段时是否检查白名单</param>
     /// <typeparam name="T">类型</typeparam>
-    public void AddType<T>(string name = "", bool isAutoAddField = false)
+    public void AddType<T>(string name = "", bool isAutoAddField = false, bool isCheckWhiteList = true)
     {
-        AddType(typeof(T), name, isAutoAddField);
+        AddType(typeof(T), name, isAutoAddField, isCheckWhiteList);
     }
 
     /// <summary>
@@ -183,18 +204,28 @@ public class EditorJsonData
         SetObj(typeof(T), objs);
     }
 
+    public void AddAssembly(Assembly assembly)
+    {
+        _assemblyWhiteList.Add(assembly);
+    }
+
+    public void AddAssembly(Type type)
+    {
+        AddAssembly(type.Assembly);
+    }
+
     /// <summary>
     /// 创建 JsonData
     /// </summary>
     public void CreateJsonData()
     {
-        Debug.Log("----- Start Create JsonData -----");
+        Plugin.Log.LogMessage("----- Start Create JsonData -----");
 
         CreateTypeJsonData();
         CreateNotes();
         CreateTemplate();
 
-        Debug.Log("----- End Create JsonData -----");
+        Plugin.Log.LogMessage("----- End Create JsonData -----");
     }
 
     /// <summary>
@@ -212,7 +243,7 @@ public class EditorJsonData
                 continue;
             }
 
-            Debug.Log($"Type: {type.Name}");
+            Plugin.Log.LogMessage($"Type: {type.Name}");
             var fields = new Dictionary<string, string>();
             foreach (var field in GetSerializedFields(type))
             {
@@ -235,12 +266,12 @@ public class EditorJsonData
         PropertyInfo[] props = null;
 
         if (type == typeof(Vector2Int))
-            props = new[] { type.GetProperty("x"), type.GetProperty("y") };
+            props = [type.GetProperty("x"), type.GetProperty("y")];
 
         if (type == typeof(Vector3Int))
-            props = new[] { type.GetProperty("x"), type.GetProperty("y"), type.GetProperty("z") };
+            props = [type.GetProperty("x"), type.GetProperty("y"), type.GetProperty("z")];
 
-        return props ?? new PropertyInfo[] { };
+        return props ?? [];
     }
 
     /// <summary>
@@ -250,7 +281,7 @@ public class EditorJsonData
     /// <param name="name">名称</param>
     private void CreateEnumTypeJsonData(Type type, string name)
     {
-        Debug.Log($"Enum: {type.Name}");
+        Plugin.Log.LogMessage($"Enum: {type.Name}");
 
         var fields = new Dictionary<string, object>();
         foreach (var field in type.GetFields())
@@ -277,7 +308,7 @@ public class EditorJsonData
         {
             if (type.IsEnum) continue;
 
-            Debug.Log($"Notes: {type.Name}");
+            Plugin.Log.LogMessage($"Notes: {type.Name}");
 
             var zh = new FileInfo(Path.Combine(dir_zh.FullName, $"{name}.txt"));
             var en = new FileInfo(Path.Combine(dir_en.FullName, $"{name}.txt"));
@@ -339,9 +370,9 @@ public class EditorJsonData
         {
             if (!type.IsSubclassOf(typeof(UnityEngine.Object))) continue;
 
-            Debug.Log($"Template: {type.Name}");
+            Plugin.Log.LogMessage($"Template: {type.Name}");
 
-            var data = TypeToJsonData(type, name);
+            var data = TypeToJsonData(type, type);
             var json = data.ToJson();
 
             if (type.IsSubclassOf(typeof(UniqueIDScriptable)))
@@ -586,11 +617,10 @@ public class EditorJsonData
     /// 创建 BaseJson (UniqueIDScriptableBaseJsonData)
     /// </summary>
     /// <param name="type">类型</param>
-    /// <param name="base_name">顶层类型名称</param>
-    private void CreateBaseJson(Type type, string base_name)
+    /// <param name="base_type">顶层类型名称</param>
+    /// <param name="toScript">到FromScriptableObject</param>
+    private void CreateBaseJson(Type type, Type base_type, bool toScript)
     {
-        // if (type.IsArray) type = type.GetElementType();
-        // if (type is null) return;
         type = ResolveType(type);
 
         if (type.IsEnum) return;
@@ -598,11 +628,12 @@ public class EditorJsonData
         if (!_types.ContainsKey(type)) return;
         if (type.IsSubclassOf(typeof(UnityEngine.Object))) return;
 
-        var dir = Directory.CreateDirectory(Path.Combine(_output, "UniqueIDScriptableBaseJsonData", base_name));
+        var dir = Directory.CreateDirectory(Path.Combine(_output, "UniqueIDScriptableBaseJsonData",
+            toScript ? "FromScriptableObject" : _types[base_type]));
         if (File.Exists(Path.Combine(dir.FullName, $"{_types[type]}.json"))) return;
 
-        Debug.Log($"-- BaseJson: {type.Name}");
-        var data = TypeToJsonData(type, base_name);
+        Plugin.Log.LogMessage($"-- BaseJson: {type.Name}");
+        var data = TypeToJsonData(type, base_type);
         OutputJson(dir.FullName, _types[type], data.ToJson());
     }
 
@@ -610,17 +641,16 @@ public class EditorJsonData
     /// 类型转 JsonData
     /// </summary>
     /// <param name="type">类型</param>
-    /// <param name="base_name">顶层类型名称</param>
+    /// <param name="base_type">顶层类型</param>
     /// <returns>JsonData</returns>
-    private JsonData TypeToJsonData(Type type, string base_name)
+    private JsonData TypeToJsonData(Type type, Type base_type)
     {
         var data = new JsonData();
 
-        bool is_create;
-        if (_types[type] == base_name)
+        var is_create = false;
+
+        if (type == base_type)
         {
-            // is_create = type.IsSubclassOf(typeof(UniqueIDScriptable)) || type.IsSubclassOf(typeof(ScriptableObject)) &&
-            //     type.Module != typeof(CardData).Module;
             is_create = type.IsSubclassOf(typeof(ScriptableObject));
         }
         else
@@ -628,13 +658,19 @@ public class EditorJsonData
             is_create = !type.IsSubclassOf(typeof(UniqueIDScriptable));
         }
 
+        if (type.IsSubclassOf(typeof(UniqueIDScriptable)))
+        {
+            Directory.CreateDirectory(Path.Combine(_output, "UniqueIDScriptableBaseJsonData", _types[base_type]));
+        }
+
         var no_field = true;
-        var is_script = type.IsSubclassOf(typeof(ScriptableObject)) && !type.IsSubclassOf(typeof(UniqueIDScriptable));
+        var is_script = base_type.IsSubclassOf(typeof(ScriptableObject)) &&
+                        !type.IsSubclassOf(typeof(UniqueIDScriptable));
         foreach (var field in GetSerializedFields(type))
         {
             no_field = false;
-            if (is_create) CreateBaseJson(field.FieldType, is_script ? "FromScriptableObject" : base_name);
-            data[field.Name] = FieldToJsonData(field, base_name);
+            if (is_create) CreateBaseJson(field.FieldType, base_type, is_script);
+            data[field.Name] = FieldToJsonData(field, base_type);
         }
 
         if (no_field) data.SetJsonType(JsonType.Object);
@@ -645,9 +681,9 @@ public class EditorJsonData
     /// 字段转 JsonData
     /// </summary>
     /// <param name="field">字段信息</param>
-    /// <param name="base_name">顶层类型名称</param>
+    /// <param name="base_type">顶层类型名称</param>
     /// <returns>JsonData</returns>
-    private JsonData FieldToJsonData(FieldInfo field, string base_name)
+    private JsonData FieldToJsonData(FieldInfo field, Type base_type)
     {
         JsonData data;
         var type = field.FieldType;
@@ -674,7 +710,7 @@ public class EditorJsonData
         }
         else
         {
-            data = ClassFieldToJsonData(type, base_name);
+            data = ClassFieldToJsonData(type, base_type);
         }
 
         return data;
@@ -684,11 +720,11 @@ public class EditorJsonData
     /// 类类型转 JsonData
     /// </summary>
     /// <param name="type">类型</param>
-    /// <param name="base_name">顶层类型名称</param>
+    /// <param name="base_type">顶层类型名称</param>
     /// <returns>JsonData</returns>
-    private JsonData ClassFieldToJsonData(Type type, string base_name)
+    private JsonData ClassFieldToJsonData(Type type, Type base_type)
     {
-        if (!type.IsSubclassOf(typeof(UnityEngine.Object))) return TypeToJsonData(type, base_name);
+        if (!type.IsSubclassOf(typeof(UnityEngine.Object))) return TypeToJsonData(type, base_type);
 
         var data = new JsonData
         {
@@ -790,24 +826,6 @@ public class EditorJsonData
     {
         return type.IsGenericType ? type.GetGenericTypeDefinition() : type;
     }
-
-    // /// <summary>
-    // /// 字段是否不可序列化 <br/>
-    // /// 不可序列化的字段：字典类型，或 static | const | readonly 修饰的
-    // /// </summary>
-    // /// <param name="field">字段</param>
-    // /// <returns>是否不可序列化</returns>
-    // private static bool IsFieldNotSerialized(FieldInfo field)
-    // {
-    //     if (field.IsStatic) return true;
-    //     if (field.IsLiteral) return true;
-    //     if (field.IsInitOnly) return true;
-    //     if (ResolveGenericType(field.FieldType) == typeof(Dictionary<,>)) return true;
-    //     // if (!field.FieldType.IsSubclassOf(typeof(UnityEngine.Object)) &&
-    //     //     field.FieldType.GetCustomAttribute<SerializableAttribute>() is null) return true;
-    //
-    //     return field.GetCustomAttribute<NonSerializedAttribute>() is not null;
-    // }
 
     /// <summary>
     /// 字段是否可序列化
